@@ -1,14 +1,16 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Applicant } from '../../types';
+import type { Applicant, GameScript } from '../../types';
 import { cn } from '../../lib/utils';
 import { ApplicantCardContent } from './ApplicantCard';
 
 interface SortableApplicantCardProps {
   applicant: Applicant;
+  game?: GameScript;
+  officialApps?: Applicant[];
 }
 
-export default function SortableApplicantCard({ applicant }: SortableApplicantCardProps) {
+export default function SortableApplicantCard({ applicant, game, officialApps }: SortableApplicantCardProps) {
   const {
     attributes,
     listeners,
@@ -40,7 +42,7 @@ export default function SortableApplicantCard({ applicant }: SortableApplicantCa
         isDragging && 'z-50 shadow-glow-amber border-amber-450/50 scale-105'
       )}
     >
-      <ApplicantCardContent applicant={applicant} />
+      <ApplicantCardContent applicant={applicant} game={game} officialApps={officialApps} />
     </div>
   );
 }

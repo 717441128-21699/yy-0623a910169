@@ -21,6 +21,7 @@ import { calcRoleFitScore } from '../utils/matchScore';
 import SortToolbar from '../components/review/SortToolbar';
 import DragColumn from '../components/review/DragColumn';
 import ApplicantCard, { ApplicantCardContent } from '../components/review/ApplicantCard';
+import ConfirmGroupPreview from '../components/review/ConfirmGroupPreview';
 
 type ColumnStatus = 'pending' | 'official' | 'standby' | 'next';
 
@@ -69,6 +70,7 @@ export default function ReviewPage() {
 
   const [sortKey, setSortKey] = useState<SortKey>('matchScore');
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   const officialApps = useMemo(
     () => allApplicants.filter(a => a.status === 'official').sort((a, b) => a.order - b.order),
@@ -100,10 +102,16 @@ export default function ReviewPage() {
 
   const canConfirm = game ? officialApplicants.length === game.playerCount : false;
 
+  const handleOpenPreview = () => {
+    if (!game) return;
+    setShowPreview(true);
+  };
+
   const handleConfirmGroup = () => {
     if (!game || !canConfirm || !id) return;
     generateChecklist(id);
     updateGameStatus(id, 'confirmed');
+    setShowPreview(false);
     navigate(`/checklist/${id}`);
   };
 
@@ -248,19 +256,23 @@ export default function ReviewPage() {
 
               <div className="flex flex-col gap-3 shrink-0">
                 <button
-                  onClick={handleConfirmGroup}
-                  disabled={!canConfirm}
+                  onClick={handleOpenPreview}
+                  disabled={officialApplicants.length === 0}
                   className={cn(
                     'btn-primary text-base !py-3 !px-6',
                     canConfirm && 'animate-pulse-slow'
                   )}
                 >
-                  ✨ 确认成团
+                  ✨ 预览成团效果
                 </button>
-                {!canConfirm && (
+                {!canConfirm && officialApplicants.length > 0 && (
                   <p className="text-xs text-amber-400/70 text-center max-w-[200px]">
-                    正式车需要满 {game.playerCount} 人才能确认成团
-                    （还差 {game.playerCount - officialApplicants.length} 人）
+                    正式车还差 {game.playerCount - officialApplicants.length} 人才能最终确认
+                  </p>
+                )}
+                {officialApplicants.length === 0 && (
+                  <p className="text-xs text-white/40 text-center max-w-[200px]">
+                    先把报名者拖到正式车里
                   </p>
                 )}
               </div>
@@ -295,6 +307,8 @@ export default function ReviewPage() {
                 title={col.title}
                 applicants={getApplicantsByStatus(col.id)}
                 capacity={col.id === 'official' ? game.playerCount : undefined}
+                game={game}
+                officialApps={officialApps}
               />
             ))}
           </div>
@@ -302,12 +316,22 @@ export default function ReviewPage() {
           <DragOverlay dropAnimation={{ duration: 250, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
             {activeApplicant ? (
               <div className="glass-card p-4 shadow-glow-amber-strong border-amber-450/60 scale-105 opacity-95 rotate-1">
-                <ApplicantCardContent applicant={activeApplicant as ApplicantType} />
+                <ApplicantCardContent applicant={activeApplicant as ApplicantType} game={game} officialApps={officialApps} />
               </div>
             ) : null}
           </DragOverlay>
         </DndContext>
       </div>
+
+      {game && (
+        <ConfirmGroupPreview
+          open={showPreview}
+          onClose={() => setShowPreview(false)}
+          game={game}
+          applicants={officialApps}
+          onConfirm={handleConfirmGroup}
+        />
+      )}
     </div>
   );
 }

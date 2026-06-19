@@ -1,6 +1,6 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import type { Applicant } from '../../types';
+import type { Applicant, GameScript } from '../../types';
 import { cn } from '../../lib/utils';
 import SortableApplicantCard from './SortableApplicantCard';
 
@@ -9,6 +9,8 @@ interface DragColumnProps {
   title: string;
   applicants: Applicant[];
   capacity?: number;
+  game?: GameScript;
+  officialApps?: Applicant[];
 }
 
 const columnStyles: Record<string, { border: string; badge: string; glow: string }> = {
@@ -34,7 +36,7 @@ const columnStyles: Record<string, { border: string; badge: string; glow: string
   },
 };
 
-export default function DragColumn({ id, title, applicants, capacity }: DragColumnProps) {
+export default function DragColumn({ id, title, applicants, capacity, game, officialApps }: DragColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id,
     data: { type: 'column', status: id },
@@ -104,7 +106,7 @@ export default function DragColumn({ id, title, applicants, capacity }: DragColu
       >
         <SortableContext items={applicants.map(a => a.id)} strategy={verticalListSortingStrategy}>
           {applicants.map(applicant => (
-            <SortableApplicantCard key={applicant.id} applicant={applicant} />
+            <SortableApplicantCard key={applicant.id} applicant={applicant} game={game} officialApps={officialApps} />
           ))}
         </SortableContext>
 

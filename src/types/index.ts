@@ -52,12 +52,19 @@ export interface Applicant {
   appliedAt: string;
 }
 
+export interface AssignedRole {
+  name: string;
+  role: string;
+  duty: string;
+  avatar: string;
+}
+
 export interface TripChecklistData {
   gameId: string;
   trainTickets: string;
   shopAddressWithMap: string;
   groupAnnouncement: string;
-  assignedRoles: { name: string; role: string; duty: string; avatar: string }[];
+  assignedRoles: AssignedRole[];
   generatedAt: string;
 }
 

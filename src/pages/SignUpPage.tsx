@@ -133,7 +133,7 @@ export default function SignUpPage() {
     <div className="min-h-screen pb-24">
       <div className="container mx-auto px-4 lg:px-8 pt-6">
         <Link
-          to={`/detail/${id}`}
+          to={`/script/${id}`}
           className="inline-flex items-center gap-2 text-white/60 hover:text-white transition-colors mb-6 group"
         >
           <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />

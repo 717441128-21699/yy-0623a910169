@@ -5,20 +5,16 @@ import {
   Timer,
   Wallet,
   Users,
-  Ticket,
-  CreditCard,
-  MapPin,
-  Megaphone,
   Copy,
   Printer,
   Image,
   Sparkles,
   Check,
   AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { useGameStore } from '@/store/useGameStore';
-import InfoCard from '@/components/checklist/InfoCard';
-import { cn } from '@/lib/utils';
+import EditableChecklistField from '@/components/checklist/EditableChecklistField';
 
 export default function ChecklistPage() {
   const { id } = useParams<{ id: string }>();
@@ -26,11 +22,13 @@ export default function ChecklistPage() {
   const checklist = useGameStore((s) => s.getChecklist(id || ''));
   const generateChecklist = useGameStore((s) => s.generateChecklist);
   const getApplicantsByGame = useGameStore((s) => s.getApplicantsByGame);
+  const updateChecklistField = useGameStore((s) => s.updateChecklistField);
 
   const [generating, setGenerating] = useState(false);
   const [copyToast, setCopyToast] = useState(false);
   const [imageToast, setImageToast] = useState(false);
   const [generateError, setGenerateError] = useState(false);
+  const [syncToast, setSyncToast] = useState(false);
 
   const officialCount = getApplicantsByGame(id || '').filter(
     (a) => a.status === 'official'
@@ -99,6 +97,13 @@ export default function ChecklistPage() {
   const handleGenerateImage = () => {
     setImageToast(true);
     setTimeout(() => setImageToast(false), 2000);
+  };
+
+  const handleSyncMembers = () => {
+    if (!id) return;
+    generateChecklist(id, true);
+    setSyncToast(true);
+    setTimeout(() => setSyncToast(false), 2000);
   };
 
   if (!game) {
@@ -221,33 +226,42 @@ export default function ChecklistPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-          <InfoCard
+          <EditableChecklistField
             title="车票"
-            iconName="Ticket"
+            icon="Ticket"
             iconColor="text-indigo-400"
-            content={checklist.trainTickets}
+            initialValue={checklist.trainTickets}
+            onSave={(val) => id && updateChecklistField(id, 'trainTickets', val)}
+            multiline
             copyable
           />
-          <InfoCard
+          <EditableChecklistField
             title="定金"
-            iconName="CreditCard"
+            icon="CreditCard"
             iconColor="text-amber-400"
-            content={`定金金额：￥${game.deposit}/人\n\n提交后不退。\n24小时内鸽车需自行找人补位，否则定金扣除作为社团公费。\n\n请转账至社团支付宝：xxx@xxx.com\n备注格式：剧本杀_${game.title}_姓名`}
+            initialValue={`定金金额：￥${game.deposit}/人\n\n提交后不退。\n24小时内鸽车需自行找人补位，否则定金扣除作为社团公费。\n\n请转账至社团支付宝：xxx@xxx.com\n备注格式：剧本杀_${game.title}_姓名`}
+            onSave={() => {}}
+            multiline
             copyable
+            readOnly
           />
-          <InfoCard
+          <EditableChecklistField
             title="店铺地址"
-            iconName="MapPin"
+            icon="MapPin"
             iconColor="text-emerald-400"
-            content={checklist.shopAddressWithMap}
+            initialValue={checklist.shopAddressWithMap}
+            onSave={(val) => id && updateChecklistField(id, 'shopAddressWithMap', val)}
+            multiline
             copyable
             mapLink={`https://uri.amap.com/search?keyword=${encodeURIComponent(game.shopAddress)}`}
           />
-          <InfoCard
+          <EditableChecklistField
             title="社团公告"
-            iconName="Megaphone"
+            icon="Megaphone"
             iconColor="text-rose-400"
-            content={checklist.groupAnnouncement}
+            initialValue={checklist.groupAnnouncement}
+            onSave={(val) => id && updateChecklistField(id, 'groupAnnouncement', val)}
+            multiline
             copyable
           />
         </div>
@@ -333,6 +347,13 @@ export default function ChecklistPage() {
 
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-3 w-full sm:w-auto">
             <button
+              onClick={handleSyncMembers}
+              className="flex-1 sm:flex-none btn-secondary"
+            >
+              <RefreshCw className="w-4 h-4" />
+              🔄 同步正式车成员
+            </button>
+            <button
               onClick={handleCopyAll}
               className="flex-1 sm:flex-none btn-ghost"
             >
@@ -341,7 +362,7 @@ export default function ChecklistPage() {
             </button>
             <button
               onClick={handlePrint}
-              className="flex-1 sm:flex-none btn-secondary"
+              className="flex-1 sm:flex-none btn-ghost"
             >
               <Printer className="w-4 h-4" />
               打印
@@ -357,15 +378,19 @@ export default function ChecklistPage() {
         </div>
       </div>
 
-      {(copyToast || imageToast) && (
+      {(copyToast || imageToast || syncToast) && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-fade-in-up print:hidden">
           <div className="flex items-center gap-2 px-5 py-3 rounded-2xl backdrop-blur-md text-white text-sm font-medium shadow-xl">
             <Check className="w-4 h-4" />
-            {copyToast ? '清单已复制到剪贴板' : '图片生成功能即将上线'}
+            {syncToast
+              ? '已同步最新成员分工'
+              : copyToast
+              ? '清单已复制到剪贴板'
+              : '图片生成功能即将上线'}
             <style>{`
               .fixed.bottom-8 > div {
-                background: ${copyToast ? 'rgba(16, 185, 129, 0.9)' : 'rgba(99, 102, 241, 0.9)'};
-                box-shadow: ${copyToast ? '0 10px 40px rgba(16, 185, 129, 0.35)' : '0 10px 40px rgba(99, 102, 241, 0.35)'};
+                background: ${syncToast ? 'rgba(99, 102, 241, 0.9)' : copyToast ? 'rgba(16, 185, 129, 0.9)' : 'rgba(99, 102, 241, 0.9)'};
+                box-shadow: ${syncToast ? '0 10px 40px rgba(99, 102, 241, 0.35)' : copyToast ? '0 10px 40px rgba(16, 185, 129, 0.35)' : '0 10px 40px rgba(99, 102, 241, 0.35)'};
               }
             `}</style>
           </div>

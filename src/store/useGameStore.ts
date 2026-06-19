@@ -20,8 +20,9 @@ interface GameState {
   moveApplicant: (applicantId: string, toStatus: Applicant['status'], toIndex?: number) => void;
   reorderApplicants: (gameId: string, status: Applicant['status'], orderedIds: string[]) => void;
 
-  generateChecklist: (gameId: string) => TripChecklistData;
+  generateChecklist: (gameId: string, preserveExisting?: boolean) => TripChecklistData;
   getChecklist: (gameId: string) => TripChecklistData | undefined;
+  updateChecklistField: (gameId: string, field: keyof Omit<TripChecklistData, 'gameId' | 'assignedRoles' | 'generatedAt'>, value: string) => void;
 }
 
 function saveApplicants(applicants: Applicant[]) {
@@ -118,7 +119,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       .sort((a, b) => a.order - b.order)
       .filter(a => a.id !== applicantId);
 
-    let toList = gameApps.filter(a => a.status === toStatus)
+    const toList = gameApps.filter(a => a.status === toStatus)
       .sort((a, b) => a.order - b.order);
 
     const insertIndex = toIndex === undefined ? toList.length : Math.min(toIndex, toList.length);
@@ -152,7 +153,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     saveApplicants(newApplicants);
   },
 
-  generateChecklist: (gameId) => {
+  generateChecklist: (gameId, preserveExisting = false) => {
     const game = get().getGame(gameId);
     if (!game) throw new Error('活动不存在');
 
@@ -161,12 +162,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       .filter(a => a.status === 'official')
       .sort((a, b) => a.order - b.order);
 
+    const existing = preserveExisting ? get().getChecklist(gameId) : undefined;
+
     const duties = ['车头·总协调', '财务·预算AA', '复盘记录员', '摄影·物料', '副驾·安全', '后勤·餐饮', '外联·店铺'];
     const checklist: TripChecklistData = {
       gameId,
-      trainTickets: `去程：${game.transport} ${game.departureDate}\n返程：${game.returnTime}（具体车次待确认）`,
-      shopAddressWithMap: `${game.shopName}\n${game.shopAddress}\n（导航地址请复制到高德/百度地图搜索）`,
-      groupAnnouncement: `【成团确认】${game.title} 正式成团！\n\n集合：${game.campus}\n交通：${game.transport}\n定金：¥${game.deposit}（提交后不退）\n总预算AA：约¥${game.budget}/人\n\n⚠️ 请假提示：${game.leaveRiskNotice}\n\n请大家24小时内确认车票信息，有问题群内讨论。社团QQ群：123456789`,
+      trainTickets: existing?.trainTickets ?? `去程：${game.transport} ${game.departureDate}\n返程：${game.returnTime}（具体车次待确认）`,
+      shopAddressWithMap: existing?.shopAddressWithMap ?? `${game.shopName}\n${game.shopAddress}\n（导航地址请复制到高德/百度地图搜索）`,
+      groupAnnouncement: existing?.groupAnnouncement ?? `【成团确认】${game.title} 正式成团！\n\n集合：${game.campus}\n交通：${game.transport}\n定金：¥${game.deposit}（提交后不退）\n总预算AA：约¥${game.budget}/人\n\n⚠️ 请假提示：${game.leaveRiskNotice}\n\n请大家24小时内确认车票信息，有问题群内讨论。社团QQ群：123456789`,
       assignedRoles: apps.map((a, i) => ({
         name: a.name,
         role: a.preferredRole || game.roles[i % game.roles.length] || '成员',
@@ -182,4 +185,13 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   getChecklist: (gameId) => get().checklists[gameId],
+
+  updateChecklistField: (gameId, field, value) => {
+    const existing = get().getChecklist(gameId);
+    if (!existing) return;
+    const updated = { ...existing, [field]: value };
+    const checklists = { ...get().checklists, [gameId]: updated };
+    set({ checklists });
+    saveToStorage('checklists', checklists);
+  },
 }));

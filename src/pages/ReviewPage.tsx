@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   DndContext,
@@ -11,13 +11,13 @@ import {
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
-  type DragOverEvent,
 } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import { MapPin, Calendar, Users, ArrowLeft, ShieldAlert } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
-import { GRADES, type SortKey, type Applicant, type Applicant as ApplicantType } from '../types';
+import { GRADES, type SortKey, type Applicant, type Applicant as ApplicantType, type GameScript } from '../types';
 import { cn } from '../lib/utils';
+import { calcRoleFitScore } from '../utils/matchScore';
 import SortToolbar from '../components/review/SortToolbar';
 import DragColumn from '../components/review/DragColumn';
 import ApplicantCard, { ApplicantCardContent } from '../components/review/ApplicantCard';
@@ -25,12 +25,13 @@ import ApplicantCard, { ApplicantCardContent } from '../components/review/Applic
 type ColumnStatus = 'pending' | 'official' | 'standby' | 'next';
 
 const columns: { id: ColumnStatus; title: string }[] = [
+  { id: 'pending', title: '📋 待审核' },
   { id: 'official', title: '🚗 正式车' },
   { id: 'standby', title: '⏳ 候补车' },
   { id: 'next', title: '📅 下次优先' },
 ];
 
-function sortApplicants(applicants: Applicant[], sortKey: SortKey): Applicant[] {
+function sortByKey(applicants: Applicant[], sortKey: SortKey, game: GameScript | undefined, officialApps: Applicant[]): Applicant[] {
   const sorted = [...applicants];
   switch (sortKey) {
     case 'matchScore':
@@ -42,7 +43,11 @@ function sortApplicants(applicants: Applicant[], sortKey: SortKey): Applicant[] 
     case 'noFlake':
       return sorted.sort((a, b) => Number(a.hasFlakedBefore) - Number(b.hasFlakedBefore));
     case 'role':
-      return sorted.sort((a, b) => Number(!!b.preferredRole) - Number(!!a.preferredRole));
+      if (!game) return sorted;
+      return sorted
+        .map(a => ({ app: a, fit: calcRoleFitScore(a, game, officialApps) }))
+        .sort((a, b) => b.fit.score - a.fit.score)
+        .map(item => item.app);
     default:
       return sorted;
   }
@@ -54,7 +59,8 @@ export default function ReviewPage() {
 
   const getGame = useGameStore(state => state.getGame);
   const getApplicantsByGame = useGameStore(state => state.getApplicantsByGame);
-  const updateApplicantStatus = useGameStore(state => state.updateApplicantStatus);
+  const moveApplicant = useGameStore(state => state.moveApplicant);
+  const reorderApplicants = useGameStore(state => state.reorderApplicants);
   const updateGameStatus = useGameStore(state => state.updateGameStatus);
   const generateChecklist = useGameStore(state => state.generateChecklist);
 
@@ -63,35 +69,33 @@ export default function ReviewPage() {
 
   const [sortKey, setSortKey] = useState<SortKey>('matchScore');
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [localApplicants, setLocalApplicants] = useState<Applicant[]>(allApplicants);
 
-  const sortedApplicants = useMemo(
-    () => sortApplicants(localApplicants.length > 0 ? localApplicants : allApplicants, sortKey),
-    [localApplicants, allApplicants, sortKey]
+  const officialApps = useMemo(
+    () => allApplicants.filter(a => a.status === 'official').sort((a, b) => a.order - b.order),
+    [allApplicants]
   );
 
-  const pendingApplicants = sortedApplicants.filter(a => a.status === 'pending');
-  const officialApplicants = sortedApplicants.filter(a => a.status === 'official');
-  const standbyApplicants = sortedApplicants.filter(a => a.status === 'standby');
-  const nextApplicants = sortedApplicants.filter(a => a.status === 'next');
+  const sortedByStatus = useCallback(
+    (status: Applicant['status']): Applicant[] => {
+      const list = allApplicants.filter(a => a.status === status);
+      return sortByKey(list, sortKey, game, officialApps);
+    },
+    [allApplicants, sortKey, game, officialApps]
+  );
+
+  const pendingApplicants = sortedByStatus('pending');
+  const officialApplicants = sortedByStatus('official');
+  const standbyApplicants = sortedByStatus('standby');
+  const nextApplicants = sortedByStatus('next');
 
   const activeApplicant = activeId
-    ? [...allApplicants, ...localApplicants].find(a => a.id === activeId) || null
+    ? allApplicants.find(a => a.id === activeId) || null
     : null;
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 5,
-      },
-    }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor),
-    useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 200,
-        tolerance: 5,
-      },
-    })
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
   );
 
   const canConfirm = game ? officialApplicants.length === game.playerCount : false;
@@ -112,11 +116,11 @@ export default function ReviewPage() {
     }
   };
 
-  const findContainer = (id: string): ColumnStatus | null => {
-    if (id === 'pending' || id === 'official' || id === 'standby' || id === 'next') {
-      return id as ColumnStatus;
+  const findContainer = (itemId: string): ColumnStatus | null => {
+    if (itemId === 'pending' || itemId === 'official' || itemId === 'standby' || itemId === 'next') {
+      return itemId as ColumnStatus;
     }
-    const applicant = [...allApplicants, ...localApplicants].find(a => a.id === id);
+    const applicant = allApplicants.find(a => a.id === itemId);
     return applicant ? applicant.status : null;
   };
 
@@ -124,99 +128,37 @@ export default function ReviewPage() {
     setActiveId(event.active.id as string);
   };
 
-  const handleDragOver = (event: DragOverEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-
-    const activeId = active.id as string;
-    const overId = over.id as string;
-
-    const activeContainer = findContainer(activeId);
-    const overContainer = findContainer(overId);
-
-    if (!activeContainer || !overContainer || activeContainer === overContainer) {
-      return;
-    }
-
-    setLocalApplicants(prev => {
-      const currentList = prev.length > 0 ? prev : allApplicants;
-      const activeItems = currentList.filter(a => a.status === activeContainer);
-      const overItems = currentList.filter(a => a.status === overContainer);
-      const activeIndex = activeItems.findIndex(a => a.id === activeId);
-      let overIndex = overItems.findIndex(a => a.id === overId);
-      if (overIndex === -1) overIndex = overItems.length;
-
-      const newActiveItems = [...activeItems];
-      const [removed] = newActiveItems.splice(activeIndex, 1);
-      const removedWithStatus = removed ? { ...removed, status: overContainer as Applicant['status'] } : null;
-
-      const newOverItems = [...overItems];
-      if (removedWithStatus) {
-        newOverItems.splice(overIndex, 0, removedWithStatus);
-      }
-
-      const otherItems = currentList.filter(
-        a => a.status !== activeContainer && a.status !== overContainer
-      );
-
-      return [...otherItems, ...newActiveItems, ...newOverItems];
-    });
-  };
-
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveId(null);
 
-    if (!over) return;
+    if (!over || !game || !id) return;
 
-    const activeId = active.id as string;
-    const overId = over.id as string;
+    const activeIdStr = active.id as string;
+    const overIdStr = over.id as string;
 
-    const activeContainer = findContainer(activeId);
-    const overContainer = findContainer(overId);
+    const activeContainer = findContainer(activeIdStr);
+    const overContainer = findContainer(overIdStr);
 
     if (!activeContainer || !overContainer) return;
 
-    let finalApplicants: Applicant[];
-
     if (activeContainer === overContainer) {
-      const currentList = localApplicants.length > 0 ? localApplicants : allApplicants;
-      const items = currentList.filter(a => a.status === activeContainer);
-      const oldIndex = items.findIndex(a => a.id === activeId);
-      let newIndex = items.findIndex(a => a.id === overId);
+      const items = getApplicantsByStatus(activeContainer);
+      const oldIndex = items.findIndex(a => a.id === activeIdStr);
+      let newIndex = items.findIndex(a => a.id === overIdStr);
       if (newIndex === -1) newIndex = items.length;
-
-      if (oldIndex !== newIndex) {
+      if (oldIndex !== newIndex && oldIndex !== -1) {
         const newItems = arrayMove(items, oldIndex, newIndex);
-        const otherItems = currentList.filter(a => a.status !== activeContainer);
-        finalApplicants = [...otherItems, ...newItems];
-        setLocalApplicants(finalApplicants);
+        reorderApplicants(id, activeContainer, newItems.map(a => a.id));
       }
       return;
     }
 
-    const currentList = localApplicants.length > 0 ? localApplicants : allApplicants;
-    const activeItems = currentList.filter(a => a.status === activeContainer);
-    const overItems = currentList.filter(a => a.status === overContainer);
-    const activeIndex = activeItems.findIndex(a => a.id === activeId);
-    let overIndex = overItems.findIndex(a => a.id === overId);
+    const overItems = getApplicantsByStatus(overContainer);
+    let overIndex = overItems.findIndex(a => a.id === overIdStr);
     if (overIndex === -1) overIndex = overItems.length;
 
-    const newActiveItems = [...activeItems];
-    const [removed] = newActiveItems.splice(activeIndex, 1);
-
-    const newOverItems = [...overItems];
-    if (removed) {
-      newOverItems.splice(overIndex, 0, { ...removed, status: overContainer as Applicant['status'] });
-    }
-
-    const otherItems = currentList.filter(
-      a => a.status !== activeContainer && a.status !== overContainer
-    );
-
-    finalApplicants = [...otherItems, ...newActiveItems, ...newOverItems];
-    setLocalApplicants(finalApplicants);
-    updateApplicantStatus([activeId], overContainer as Applicant['status']);
+    moveApplicant(activeIdStr, overContainer as Applicant['status'], overIndex);
   };
 
   if (!game) {
@@ -242,17 +184,20 @@ export default function ReviewPage() {
           <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-amber-450/10 to-transparent rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
           <div className="relative">
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate(`/script/${id}`)}
               className="btn-ghost !py-2 !px-3 text-sm mb-4"
             >
               <ArrowLeft className="w-4 h-4" />
-              返回
+              返回剧本详情
             </button>
 
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
               <div className="flex-1 min-w-0">
                 <h1 className="font-serif text-3xl md:text-4xl font-bold text-white mb-3 tracking-wide">
                   {game.title}
+                  <span className="ml-3 text-base font-sans font-medium text-amber-450 bg-amber-450/15 px-3 py-1 rounded-full align-middle">
+                    车头审核
+                  </span>
                 </h1>
                 <div className="flex flex-wrap gap-4 text-sm">
                   <div className="flex items-center gap-1.5 text-white/60">
@@ -323,37 +268,26 @@ export default function ReviewPage() {
           </div>
         </div>
 
-        <SortToolbar sortKey={sortKey} onSortChange={setSortKey} />
+        <div className="glass-card p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-white/60">排序方式：</span>
+              <SortToolbar sortKey={sortKey} onSortChange={setSortKey} />
+            </div>
+            <div className="text-xs text-white/40 flex items-center gap-1">
+              <span>💡</span>
+              <span>排序仅用于浏览，拖拽调整最终成团顺序</span>
+            </div>
+          </div>
+        </div>
 
         <DndContext
           sensors={sensors}
           collisionDetection={closestCorners}
           onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
-          {pendingApplicants.length > 0 && (
-            <div className="glass-card p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="font-serif font-bold text-xl text-white flex items-center gap-2">
-                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-amber-450/20 text-amber-400 text-sm font-bold">
-                      {pendingApplicants.length}
-                    </span>
-                    📋 待审核区
-                  </h3>
-                  <p className="text-sm text-white/40 mt-1 ml-10">拖拽下方卡片到右侧三个列中进行分类</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                {pendingApplicants.map(applicant => (
-                  <ApplicantCard key={applicant.id} applicant={applicant} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
             {columns.map(col => (
               <DragColumn
                 key={col.id}

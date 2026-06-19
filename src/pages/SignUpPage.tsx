@@ -123,7 +123,7 @@ export default function SignUpPage() {
     return (
       <SignUpSuccess
         applicant={submittedData}
-        onViewDetails={() => navigate(`/review/${id}`)}
+        onViewDetails={() => navigate(`/script/${id}`)}
         onBackHome={() => navigate('/')}
       />
     );
@@ -503,7 +503,7 @@ export default function SignUpPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate(`/detail/${id}`)}
+                  onClick={() => navigate(`/script/${id}`)}
                   className="btn-ghost flex-1 sm:flex-none"
                 >
                   再想想

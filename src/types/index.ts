@@ -45,7 +45,10 @@ export interface Applicant {
   hasFlakedBefore: boolean;
   matchScore: number;
 
+// 当前状态
   status: 'pending' | 'official' | 'standby' | 'next';
+  // 同状态下的排序权重（越小越靠前）
+  order: number;
   appliedAt: string;
 }
 

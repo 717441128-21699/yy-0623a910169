@@ -121,7 +121,7 @@ export default function SignUpSuccess({
             <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={onViewDetails}
-                className="btn-primary flex-1 py-3"
+                className="btn-secondary flex-1 py-3"
               >
                 <FileText className="w-4.5 h-4.5" />
                 查看本单详情

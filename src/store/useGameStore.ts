@@ -14,12 +14,18 @@ interface GameState {
   getGame: (id: string) => GameScript | undefined;
   updateGameStatus: (id: string, status: GameScript['status']) => void;
 
-  addApplicant: (data: Omit<Applicant, 'id' | 'matchScore' | 'status' | 'appliedAt'>) => void;
+  addApplicant: (data: Omit<Applicant, 'id' | 'matchScore' | 'status' | 'order' | 'appliedAt'>) => void;
   getApplicantsByGame: (gameId: string) => Applicant[];
   updateApplicantStatus: (ids: string[], status: Applicant['status']) => void;
+  moveApplicant: (applicantId: string, toStatus: Applicant['status'], toIndex?: number) => void;
+  reorderApplicants: (gameId: string, status: Applicant['status'], orderedIds: string[]) => void;
 
   generateChecklist: (gameId: string) => TripChecklistData;
   getChecklist: (gameId: string) => TripChecklistData | undefined;
+}
+
+function saveApplicants(applicants: Applicant[]) {
+  saveToStorage('applicants', applicants);
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -68,31 +74,93 @@ export const useGameStore = create<GameState>((set, get) => ({
     const game = get().getGame(data.gameId);
     if (!game) return;
     const matchScore = calcMatchScore(data, game);
+    const gameApps = get().getApplicantsByGame(data.gameId);
+    const pendingCount = gameApps.filter(a => a.status === 'pending').length;
     const applicant: Applicant = {
       ...data,
       id: uid('a_'),
       matchScore,
       status: 'pending',
+      order: pendingCount,
       appliedAt: new Date().toISOString(),
     };
     const applicants = [...get().applicants, applicant];
     set({ applicants });
-    saveToStorage('applicants', applicants);
+    saveApplicants(applicants);
   },
 
   getApplicantsByGame: (gameId) => get().applicants.filter(a => a.gameId === gameId),
 
   updateApplicantStatus: (ids, status) => {
     const idSet = new Set(ids);
-    const applicants = get().applicants.map(a => idSet.has(a.id) ? { ...a, status } : a);
+    const applicants = get().applicants.map(a => {
+      if (idSet.has(a.id)) {
+        return { ...a, status };
+      }
+      return a;
+    });
     set({ applicants });
-    saveToStorage('applicants', applicants);
+    saveApplicants(applicants);
+  },
+
+  moveApplicant: (applicantId, toStatus, toIndex) => {
+    const all = get().applicants;
+    const target = all.find(a => a.id === applicantId);
+    if (!target) return;
+
+    const gameId = target.gameId;
+    const fromStatus = target.status;
+    const gameApps = all.filter(a => a.gameId === gameId);
+
+    if (fromStatus === toStatus) return;
+
+    const fromList = gameApps.filter(a => a.status === fromStatus)
+      .sort((a, b) => a.order - b.order)
+      .filter(a => a.id !== applicantId);
+
+    let toList = gameApps.filter(a => a.status === toStatus)
+      .sort((a, b) => a.order - b.order);
+
+    const insertIndex = toIndex === undefined ? toList.length : Math.min(toIndex, toList.length);
+    const moved = { ...target, status: toStatus, order: insertIndex };
+    toList.splice(insertIndex, 0, moved);
+
+    const fromReordered = fromList.map((a, i) => ({ ...a, order: i }));
+    const toReordered = toList.map((a, i) => ({ ...a, order: i }));
+    const others = all.filter(a => a.gameId !== gameId || (a.status !== fromStatus && a.status !== toStatus));
+
+    const newApplicants = [...others, ...fromReordered, ...toReordered];
+    set({ applicants: newApplicants });
+    saveApplicants(newApplicants);
+  },
+
+  reorderApplicants: (gameId, status, orderedIds) => {
+    const all = get().applicants;
+    const statusList = all.filter(a => a.gameId === gameId && a.status === status);
+    const idToApp = new Map(statusList.map(a => [a.id, a]));
+
+    const reordered: Applicant[] = orderedIds
+      .map((id, i) => {
+        const app = idToApp.get(id);
+        return app ? { ...app, order: i } : null;
+      })
+      .filter((a): a is Applicant => a !== null);
+
+    const others = all.filter(a => !(a.gameId === gameId && a.status === status));
+    const newApplicants = [...others, ...reordered];
+    set({ applicants: newApplicants });
+    saveApplicants(newApplicants);
   },
 
   generateChecklist: (gameId) => {
     const game = get().getGame(gameId);
-    const apps = get().getApplicantsByGame(gameId).filter(a => a.status === 'official');
     if (!game) throw new Error('活动不存在');
+
+    const apps = get()
+      .getApplicantsByGame(gameId)
+      .filter(a => a.status === 'official')
+      .sort((a, b) => a.order - b.order);
+
     const duties = ['车头·总协调', '财务·预算AA', '复盘记录员', '摄影·物料', '副驾·安全', '后勤·餐饮', '外联·店铺'];
     const checklist: TripChecklistData = {
       gameId,

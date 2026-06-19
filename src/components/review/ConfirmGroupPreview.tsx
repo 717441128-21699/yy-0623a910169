@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   X, Users, MapPin, Wallet, AlertTriangle, CheckCircle2, Calendar,
   Save, ArrowLeft, Sparkles,
@@ -11,6 +11,7 @@ interface ConfirmGroupPreviewProps {
   onClose: () => void;
   game: GameScript;
   applicants: Applicant[];
+  allApplicants: Applicant[];
   previousDraft?: GroupDraft;
   onSaveDraft: (roles: AssignedRole[]) => void;
   onConfirm: (roles: AssignedRole[]) => void;
@@ -39,24 +40,33 @@ function buildAssignedRoles(applicants: Applicant[], game: GameScript): Assigned
 }
 
 type DiffItem =
-  | { type: 'added'; name: string }
-  | { type: 'removed'; name: string; role: string; duty: string }
-  | { type: 'changed'; name: string; field: 'role' | 'duty' | 'both'; oldRole: string; newRole: string; oldDuty: string; newDuty: string };
+  | { type: 'added'; name: string; avatar: string }
+  | { type: 'movedOut'; name: string; avatar: string; targetStatus: string; role: string; duty: string }
+  | { type: 'changed'; name: string; avatar: string; field: 'role' | 'duty' | 'both'; oldRole: string; newRole: string; oldDuty: string; newDuty: string };
 
-function computeDiff(current: AssignedRole[], previous: AssignedRole[]): DiffItem[] {
+function computeDiff(current: AssignedRole[], previous: AssignedRole[], allApplicants: Applicant[]): DiffItem[] {
   const currMap = new Map(current.map(r => [r.applicantId, r]));
   const prevMap = new Map(previous.map(r => [r.applicantId, r]));
+  const appMap = new Map(allApplicants.map(a => [a.id, a]));
   const diffs: DiffItem[] = [];
+
+  const statusLabel: Record<string, string> = {
+    pending: '待审核',
+    standby: '候补车',
+    next: '下次优先',
+  };
 
   for (const [id, r] of currMap) {
     if (!prevMap.has(id)) {
-      diffs.push({ type: 'added', name: r.name });
+      diffs.push({ type: 'added', name: r.name, avatar: r.avatar });
     }
   }
 
   for (const [id, r] of prevMap) {
     if (!currMap.has(id)) {
-      diffs.push({ type: 'removed', name: r.name, role: r.role, duty: r.duty });
+      const app = appMap.get(id || '');
+      const targetStatus = app ? (statusLabel[app.status] || '已移除') : '已移除';
+      diffs.push({ type: 'movedOut', name: r.name, avatar: r.avatar, targetStatus, role: r.role, duty: r.duty });
     }
   }
 
@@ -69,6 +79,7 @@ function computeDiff(current: AssignedRole[], previous: AssignedRole[]): DiffIte
       diffs.push({
         type: 'changed',
         name: r.name,
+        avatar: r.avatar,
         field: roleChanged && dutyChanged ? 'both' : roleChanged ? 'role' : 'duty',
         oldRole: prev.role,
         newRole: r.role,
@@ -86,6 +97,7 @@ export default function ConfirmGroupPreview({
   onClose,
   game,
   applicants,
+  allApplicants,
   previousDraft,
   onSaveDraft,
   onConfirm,
@@ -123,8 +135,8 @@ export default function ConfirmGroupPreview({
 
   const draftDiff = useMemo(() => {
     if (!previousDraft) return null;
-    return computeDiff(assignedRoles, previousDraft.assignedRoles);
-  }, [assignedRoles, previousDraft]);
+    return computeDiff(assignedRoles, previousDraft.assignedRoles, allApplicants);
+  }, [assignedRoles, previousDraft, allApplicants]);
 
   function updateRole(index: number, newRole: string) {
     setAssignedRoles(prev => {
@@ -298,57 +310,87 @@ export default function ConfirmGroupPreview({
                 📝 与上次草稿对比
               </h3>
 
-              <div className="glass-card p-4 space-y-2">
-                {draftDiff && draftDiff.length === 0 ? (
-                  <p className="text-sm text-white/70 flex items-center gap-2">
+              <div className="space-y-4">
+                {draftDiff && draftDiff.filter(d => d.type === 'added').length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold text-emerald-300 flex items-center gap-1.5">
+                      <span className="w-1 h-4 rounded-full bg-emerald-400" />
+                      新增成员
+                    </h4>
+                    <div className="space-y-1.5">
+                      {draftDiff.filter(d => d.type === 'added').map((item, i) => (
+                        <div key={`add-${i}`} className="flex items-center gap-2 text-sm pl-2">
+                          <span className="text-lg">{(item as any).avatar}</span>
+                          <span className="text-white/90">{item.name}</span>
+                          <span className="tag-pill bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 text-[11px]">
+                            进入正式车
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {draftDiff && draftDiff.filter(d => d.type === 'movedOut').length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold text-rose-300 flex items-center gap-1.5">
+                      <span className="w-1 h-4 rounded-full bg-rose-400" />
+                      移出正式车
+                    </h4>
+                    <div className="space-y-1.5">
+                      {draftDiff.filter(d => d.type === 'movedOut').map((item, i) => {
+                        const out = item as any;
+                        return (
+                          <div key={`out-${i}`} className="flex items-center gap-2 text-sm pl-2 flex-wrap">
+                            <span className="text-lg">{out.avatar}</span>
+                            <span className="text-white/90">{out.name}</span>
+                            <span className="tag-pill bg-rose-500/15 text-rose-300 border border-rose-400/30 text-[11px]">
+                              去了{out.targetStatus}
+                            </span>
+                            <span className="text-white/40 text-xs">
+                              原：{out.role} · {out.duty}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {draftDiff && draftDiff.filter(d => d.type === 'changed').length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold text-blue-300 flex items-center gap-1.5">
+                      <span className="w-1 h-4 rounded-full bg-blue-400" />
+                      分工变化
+                    </h4>
+                    <div className="space-y-1.5">
+                      {draftDiff.filter(d => d.type === 'changed').map((item, i) => {
+                        const ch = item as any;
+                        return (
+                          <div key={`ch-${i}`} className="flex items-center gap-2 text-sm pl-2 flex-wrap">
+                            <span className="text-lg">{ch.avatar}</span>
+                            <span className="text-white/90">{ch.name}</span>
+                            <span className="text-white/40 text-xs">
+                              {(ch.field === 'role' || ch.field === 'both') && (
+                                <>{ch.oldRole} → {ch.newRole}</>
+                              )}
+                              {ch.field === 'both' && ' · '}
+                              {(ch.field === 'duty' || ch.field === 'both') && (
+                                <>{ch.oldDuty} → {ch.newDuty}</>
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {draftDiff && draftDiff.length === 0 && (
+                  <p className="text-sm text-white/70 flex items-center gap-2 py-2">
                     <CheckCircle2 size={16} className="text-emerald-400" />
-                    ✅ 与上次草稿一致
+                    ✅ 与上次草稿完全一致
                   </p>
-                ) : (
-                  draftDiff?.map((item, i) => {
-                    if (item.type === 'added') {
-                      return (
-                        <div key={i} className="flex items-center gap-2 text-sm">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/15 text-emerald-300">
-                            🟢 新增
-                          </span>
-                          <span className="text-white/90">{item.name}</span>
-                        </div>
-                      );
-                    }
-
-                    if (item.type === 'removed') {
-                      return (
-                        <div key={i} className="flex items-center gap-2 text-sm">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-500/15 text-red-300">
-                            🔴 移除
-                          </span>
-                          <span className="text-white/90">{item.name}</span>
-                          <span className="text-white/40 text-xs">
-                            ({item.role} · {item.duty})
-                          </span>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div key={i} className="flex items-center gap-2 text-sm">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-500/15 text-blue-300">
-                          🔄 分工变化
-                        </span>
-                        <span className="text-white/90">{item.name}</span>
-                        <span className="text-white/40 text-xs">
-                          {(item.field === 'role' || item.field === 'both') && (
-                            <>{item.oldRole} → {item.newRole}</>
-                          )}
-                          {item.field === 'both' && ' · '}
-                          {(item.field === 'duty' || item.field === 'both') && (
-                            <>{item.oldDuty} → {item.newDuty}</>
-                          )}
-                        </span>
-                      </div>
-                    );
-                  })
                 )}
               </div>
             </div>

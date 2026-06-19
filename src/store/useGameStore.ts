@@ -29,6 +29,7 @@ interface GameState {
   getChecklist: (gameId: string) => TripChecklistData | undefined;
   updateChecklistField: (gameId: string, field: keyof Omit<TripChecklistData, 'gameId' | 'assignedRoles' | 'generatedAt'>, value: string) => void;
   updateChecklistAssignedRoles: (gameId: string, assignedRoles: AssignedRole[]) => void;
+  syncChecklistMembers: (gameId: string) => TripChecklistData;
 }
 
 function saveApplicants(applicants: Applicant[]) {
@@ -211,6 +212,50 @@ export const useGameStore = create<GameState>((set, get) => ({
     const checklists = { ...get().checklists, [gameId]: updated };
     set({ checklists });
     saveToStorage('checklists', checklists);
+  },
+
+  syncChecklistMembers: (gameId) => {
+    const existing = get().getChecklist(gameId);
+    const game = get().getGame(gameId);
+    if (!game) throw new Error('活动不存在');
+
+    const apps = get()
+      .getApplicantsByGame(gameId)
+      .filter(a => a.status === 'official')
+      .sort((a, b) => a.order - b.order);
+
+    const duties = ['车头·总协调', '财务·预算AA', '复盘记录员', '摄影·物料', '副驾·安全', '后勤·餐饮', '外联·店铺'];
+
+    const existingMap = new Map(
+      (existing?.assignedRoles || []).map(r => [r.applicantId, r])
+    );
+
+    const assignedRoles = apps.map((a, i) => {
+      const prev = existingMap.get(a.id);
+      if (prev) {
+        return { ...prev };
+      }
+      return {
+        name: a.name,
+        role: a.preferredRole || game.roles[i % game.roles.length] || '成员',
+        duty: duties[i % duties.length],
+        avatar: a.avatar,
+        applicantId: a.id,
+      };
+    });
+
+    const checklist: TripChecklistData = {
+      gameId,
+      trainTickets: existing?.trainTickets ?? `去程：${game.transport} ${game.departureDate}\n返程：${game.returnTime}（具体车次待确认）`,
+      shopAddressWithMap: existing?.shopAddressWithMap ?? `${game.shopName}\n${game.shopAddress}\n（导航地址请复制到高德/百度地图搜索）`,
+      groupAnnouncement: existing?.groupAnnouncement ?? `【成团确认】${game.title} 正式成团！\n\n集合：${game.campus}\n交通：${game.transport}\n定金：¥${game.deposit}（提交后不退）\n总预算AA：约¥${game.budget}/人\n\n⚠️ 请假提示：${game.leaveRiskNotice}\n\n请大家24小时内确认车票信息，有问题群内讨论。社团QQ群：123456789`,
+      assignedRoles,
+      generatedAt: new Date().toISOString(),
+    };
+    const checklists = { ...get().checklists, [gameId]: checklist };
+    set({ checklists });
+    saveToStorage('checklists', checklists);
+    return checklist;
   },
 
   saveDraft: (gameId, assignedRoles) => {

@@ -22,6 +22,7 @@ export default function ChecklistPage() {
   const game = useGameStore((s) => s.getGame(id || ''));
   const checklist = useGameStore((s) => s.getChecklist(id || ''));
   const generateChecklist = useGameStore((s) => s.generateChecklist);
+  const syncChecklistMembers = useGameStore((s) => s.syncChecklistMembers);
   const getApplicantsByGame = useGameStore((s) => s.getApplicantsByGame);
   const updateChecklistField = useGameStore((s) => s.updateChecklistField);
 
@@ -407,7 +408,7 @@ export default function ChecklistPage() {
         currentRoles={checklist?.assignedRoles ?? []}
         newApplicants={officialApps}
         onConfirmSync={() => {
-          generateChecklist(id!, true);
+          syncChecklistMembers(id!);
           setShowSyncModal(false);
           setSyncToast(true);
           setTimeout(() => setSyncToast(false), 2000);

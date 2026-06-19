@@ -82,6 +82,9 @@ export default function ReviewPage() {
   const sortedByStatus = useCallback(
     (status: Applicant['status']): Applicant[] => {
       const list = allApplicants.filter(a => a.status === status);
+      if (status === 'official') {
+        return [...list].sort((a, b) => a.order - b.order);
+      }
       return sortByKey(list, sortKey, game, officialApps);
     },
     [allApplicants, sortKey, game, officialApps]
@@ -339,6 +342,7 @@ export default function ReviewPage() {
           onClose={() => setShowPreview(false)}
           game={game}
           applicants={officialApps}
+          allApplicants={allApplicants}
           previousDraft={previousDraft}
           onSaveDraft={handleSaveDraft}
           onConfirm={handleConfirmGroup}

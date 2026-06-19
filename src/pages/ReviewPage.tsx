@@ -15,7 +15,7 @@ import {
 import { arrayMove } from '@dnd-kit/sortable';
 import { MapPin, Calendar, Users, ArrowLeft, ShieldAlert } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
-import { GRADES, type SortKey, type Applicant, type Applicant as ApplicantType, type GameScript } from '../types';
+import { GRADES, type SortKey, type Applicant, type Applicant as ApplicantType, type GameScript, type AssignedRole } from '../types';
 import { cn } from '../lib/utils';
 import { calcRoleFitScore } from '../utils/matchScore';
 import SortToolbar from '../components/review/SortToolbar';
@@ -64,6 +64,8 @@ export default function ReviewPage() {
   const reorderApplicants = useGameStore(state => state.reorderApplicants);
   const updateGameStatus = useGameStore(state => state.updateGameStatus);
   const generateChecklist = useGameStore(state => state.generateChecklist);
+  const saveDraft = useGameStore(state => state.saveDraft);
+  const getLatestDraft = useGameStore(state => state.getLatestDraft);
 
   const game = useMemo(() => (id ? getGame(id) : undefined), [id, getGame]);
   const allApplicants = useMemo(() => (id ? getApplicantsByGame(id) : []), [id, getApplicantsByGame]);
@@ -107,13 +109,21 @@ export default function ReviewPage() {
     setShowPreview(true);
   };
 
-  const handleConfirmGroup = () => {
-    if (!game || !canConfirm || !id) return;
-    generateChecklist(id);
+  const handleConfirmGroup = (roles: AssignedRole[]) => {
+    if (!game || !id) return;
+    saveDraft(id, roles);
+    generateChecklist(id, true, roles);
     updateGameStatus(id, 'confirmed');
     setShowPreview(false);
     navigate(`/checklist/${id}`);
   };
+
+  const handleSaveDraft = (roles: AssignedRole[]) => {
+    if (!id) return;
+    saveDraft(id, roles);
+  };
+
+  const previousDraft = id ? getLatestDraft(id) : undefined;
 
   const getApplicantsByStatus = (status: ColumnStatus): Applicant[] => {
     switch (status) {
@@ -329,6 +339,8 @@ export default function ReviewPage() {
           onClose={() => setShowPreview(false)}
           game={game}
           applicants={officialApps}
+          previousDraft={previousDraft}
+          onSaveDraft={handleSaveDraft}
           onConfirm={handleConfirmGroup}
         />
       )}

@@ -31,7 +31,7 @@ export function calcRoleFitScore(applicant: Applicant, game: GameScript, allOffi
     reasons.push({ text: '预算充足', score: 25 });
   } else {
     score -= 10;
-    reasons.push({ text: '预算略紧', score: -10 });
+    reasons.push({ text: '预算不足', score: -10 });
   }
 
   if (applicant.hasCrossCityExp) {
@@ -39,6 +39,7 @@ export function calcRoleFitScore(applicant: Applicant, game: GameScript, allOffi
     reasons.push({ text: '有跨城经验', score: 20 });
   } else {
     score -= 5;
+    reasons.push({ text: '无跨城经验', score: -5 });
   }
 
   if (applicant.canDoReviewRecord) {
@@ -57,13 +58,16 @@ export function calcRoleFitScore(applicant: Applicant, game: GameScript, allOffi
   }
 
   if (applicant.preferredRole) {
-    const officialRoles = new Set(allOfficial.map(a => a.preferredRole));
-    if (!officialRoles.has(applicant.preferredRole)) {
+    const officialRoles = allOfficial
+      .filter(a => a.id !== applicant.id)
+      .map(a => a.preferredRole)
+      .filter(Boolean);
+    if (!officialRoles.includes(applicant.preferredRole)) {
       score += 15;
       reasons.push({ text: '角色无冲突', score: 15 });
     } else {
-      score += 5;
-      reasons.push({ text: '有角色偏好', score: 5 });
+      score -= 10;
+      reasons.push({ text: '角色撞车', score: -10 });
     }
   }
 
@@ -91,5 +95,5 @@ export function calcRoleFitScore(applicant: Applicant, game: GameScript, allOffi
 }
 
 export function isNegativeReason(text: string): boolean {
-  return /减|略紧|冲突|晕车/.test(text);
+  return /不足|撞车|晕车|鸽车|无跨城/.test(text);
 }

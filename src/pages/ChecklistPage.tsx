@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useGameStore } from '@/store/useGameStore';
 import EditableChecklistField from '@/components/checklist/EditableChecklistField';
+import SyncPreviewModal from '@/components/checklist/SyncPreviewModal';
 
 export default function ChecklistPage() {
   const { id } = useParams<{ id: string }>();
@@ -29,6 +30,11 @@ export default function ChecklistPage() {
   const [imageToast, setImageToast] = useState(false);
   const [generateError, setGenerateError] = useState(false);
   const [syncToast, setSyncToast] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+
+  const officialApps = getApplicantsByGame(id || '')
+    .filter((a) => a.status === 'official')
+    .sort((a, b) => a.order - b.order);
 
   const officialCount = getApplicantsByGame(id || '').filter(
     (a) => a.status === 'official'
@@ -101,9 +107,7 @@ export default function ChecklistPage() {
 
   const handleSyncMembers = () => {
     if (!id) return;
-    generateChecklist(id, true);
-    setSyncToast(true);
-    setTimeout(() => setSyncToast(false), 2000);
+    setShowSyncModal(true);
   };
 
   if (!game) {
@@ -396,6 +400,20 @@ export default function ChecklistPage() {
           </div>
         </div>
       )}
+
+      <SyncPreviewModal
+        open={showSyncModal}
+        onClose={() => setShowSyncModal(false)}
+        currentRoles={checklist?.assignedRoles ?? []}
+        newApplicants={officialApps}
+        onConfirmSync={() => {
+          generateChecklist(id!, true);
+          setShowSyncModal(false);
+          setSyncToast(true);
+          setTimeout(() => setSyncToast(false), 2000);
+        }}
+        game={{ title: game.title, roles: game.roles, playerCount: game.playerCount }}
+      />
     </div>
   );
 }

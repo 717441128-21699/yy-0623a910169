@@ -57,6 +57,14 @@ export interface AssignedRole {
   role: string;
   duty: string;
   avatar: string;
+  applicantId?: string;
+}
+
+export interface GroupDraft {
+  id: string;
+  gameId: string;
+  assignedRoles: AssignedRole[];
+  savedAt: string;
 }
 
 export interface TripChecklistData {
